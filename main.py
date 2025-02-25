@@ -2,8 +2,7 @@ import telebot
 import json
 from registration import StartHandler
 from history import HistoryHandler
-
-BOT_TOKEN = '8127613906:AAGdr_DIVMFwHzj_PU9c8ZhvjmL1bOrzZyY'
+from config import BOT_TOKEN
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.callback_query_handler(func=lambda call: call.data == "evaluate")

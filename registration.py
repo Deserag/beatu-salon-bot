@@ -1,36 +1,29 @@
 import telebot
-import json
 import re
-
-USERS_DATA_FILE = 'users.json'
-
-def load_users():
-    try:
-        with open(USERS_DATA_FILE, 'r') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
-    except FileNotFoundError:
-        return {}
-
-def save_users(users):
-    with open(USERS_DATA_FILE, 'w') as f:
-        json.dump(users, f, indent=4)
+import psycopg2
 
 class StartHandler:
-    def __init__(self, bot):
+    def __init__(self, bot, connect_to_db):
         self.bot = bot
+        self.connect_to_db = connect_to_db
 
     def handle(self, message):
-        users = load_users()
-        chat_id = message.chat.id
-
-        if str(chat_id) in users:
-            self.show_menu(chat_id, users[str(chat_id)]['role'])
+        chat_id = str(message.chat.id)
+        conn = self.connect_to_db()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT telegramId FROM Client WHERE telegramId = %s", (chat_id,))
+            user = cursor.fetchone()
+            if user:
+                self.bot.send_message(message.chat.id, "Вы уже зарегистрированы!")
+                self.show_menu(message.chat.id)
+            else:
+                self.bot.send_message(message.chat.id, "Добро пожаловать! Давайте зарегистрируемся. Введите ваше Имя:")
+                self.bot.register_next_step_handler(message, self.process_name)
+            cursor.close()
+            conn.close()
         else:
-            self.bot.send_message(chat_id, "Добро пожаловать! Давайте зарегистрируемся. Введите ваше Имя:")
-            self.bot.register_next_step_handler(message, self.process_name)
+            self.bot.send_message(message.chat.id, "Ошибка подключения к базе данных.")
 
     def process_name(self, message):
         chat_id = message.chat.id
@@ -42,50 +35,39 @@ class StartHandler:
         chat_id = message.chat.id
         surname = message.text
         self.bot.send_message(chat_id, "Введите ваше отчество:")
-        self.bot.register_next_step_handler(message, self.process_secondname, name, surname)
+        self.bot.register_next_step_handler(message, self.process_middle_name, name, surname)
 
-    def process_secondname(self, message, name, surname):
+    def process_middle_name(self, message, name, surname):
         chat_id = message.chat.id
-        secondname = message.text
+        middle_name = message.text
         self.bot.send_message(chat_id, "Введите вашу дату рождения (в формате ДД.ММ.ГГГГ):")
-        self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, secondname)
+        self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, middle_name)
 
-    def process_birthdate(self, message, name, surname, secondname):
+    def process_birthdate(self, message, name, surname, middle_name):
         chat_id = message.chat.id
         birthdate = message.text
 
         if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', birthdate):
             self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
-            self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, secondname)
+            self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, middle_name)
             return
 
-        self.bot.send_message(chat_id, "Введите ваш номер телефона (только цифры):")
-        self.bot.register_next_step_handler(message, self.process_phone, name, surname, secondname, birthdate)
+        conn = self.connect_to_db()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO client (telegramId, firstName, lastName, middleName, birthDate) VALUES (%s, %s, %s, %s, %s)",
+                (str(message.chat.id), name, surname, middle_name, birthdate)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+            self.bot.send_message(chat_id, "Регистрация завершена!")
+            self.show_menu(chat_id)
+        else:
+            self.bot.send_message(chat_id, "Ошибка подключения к базе данных.")
 
-    def process_phone(self, message, name, surname, secondname, birthdate):
-        chat_id = message.chat.id
-        phone = message.text
-
-        if not re.match(r'^\d+$', phone):
-            self.bot.send_message(chat_id, "Неверный формат номера. Введите только цифры:")
-            self.bot.register_next_step_handler(message, self.process_phone, name, surname, secondname, birthdate)
-            return
-
-        users = load_users()
-        users[str(chat_id)] = {
-            'name': name,
-            'surname': surname,
-            'secondname': secondname,
-            'birthdate': birthdate,
-            'phone': phone,
-            'role': 'User'
-        }
-        save_users(users)
-        self.bot.send_message(chat_id, "Регистрация завершена!")
-        self.show_menu(chat_id, 'User')
-
-    def show_menu(self, chat_id, role):
-        if role == 'User':
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1)
-            markup.add('Запись на прием', 'История посещений', 'Профиль')
-            self.bot.send_message(chat_id, "Основное меню:", reply_markup=markup)
+    def show_menu(self, chat_id):
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1)
+        markup.add('Запись на прием', 'История посещений', 'Профиль')
+        self.bot.send_message(chat_id, "Основное меню:", reply_markup=markup)

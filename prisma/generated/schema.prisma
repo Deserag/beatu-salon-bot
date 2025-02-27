@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-py"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cabinet {
+  id            String          @id
+  number        String
+  officeId      String
+  createdAt     DateTime        @default(now())
+  creatorId     String
+  deletedAt     DateTime?
+  updatedAt     DateTime
+  status        ECabinetStatus  @default(AVAILABLE)
+  Office        Office          @relation(fields: [officeId], references: [id])
+  Schedule      Schedule[]
+  ServiceRecord ServiceRecord[]
+  UserOnCabinet UserOnCabinet[]
+}
+
+model Client {
+  id            String          @id
+  telegramId    String          @unique
+  firstName     String
+  lastName      String
+  middleName    String?
+  birthDate     DateTime
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  ClientHistory ClientHistory[]
+  ProductSale   ProductSale[]
+  Review        Review[]
+  ServiceRecord ServiceRecord[]
+}
+
+model ClientHistory {
+  id         String   @id
+  clientId   String
+  serviceId  String
+  date       DateTime
+  feedbackId String?
+  Client     Client   @relation(fields: [clientId], references: [id])
+  Review     Review?  @relation(fields: [feedbackId], references: [id])
+  Service    Service  @relation(fields: [serviceId], references: [id])
+}
+
+model Department {
+  id             String           @id
+  name           String
+  description    String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  deletedAt      DateTime?
+  DepartmentUser DepartmentUser[]
+}
+
+model DepartmentUser {
+  userId       String
+  departmentId String
+  Department   Department @relation(fields: [departmentId], references: [id])
+  User         User       @relation(fields: [userId], references: [id])
+
+  @@id([userId, departmentId])
+}
+
+model Office {
+  id            String          @id
+  number        String
+  address       String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  creatorId     String
+  Cabinet       Cabinet[]
+  ServiceRecord ServiceRecord[]
+}
+
+model Opportunity {
+  id   String @id
+  name String
+}
+
+model Position {
+  id          String  @id
+  name        String
+  description String?
+}
+
+model Product {
+  id          String        @id
+  name        String
+  description String?
+  volume      Float         @default(0)
+  unit        String        @default("мл")
+  quantity    Int
+  prices      Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  deletedAt   DateTime?
+  creatorId   String
+  User        User          @relation(fields: [creatorId], references: [id])
+  ProductSale ProductSale[]
+}
+
+model ProductSale {
+  id         String   @id
+  productId  String
+  clientId   String
+  quantity   Int
+  price      Float
+  totalPrice Float
+  saleDate   DateTime @default(now())
+  creatorId  String
+  Client     Client   @relation(fields: [clientId], references: [id])
+  Product    Product  @relation(fields: [productId], references: [id])
+}
+
+model Review {
+  id            String          @id
+  serviceId     String
+  clientId      String
+  comment       String?
+  grade         EGrade
+  ClientHistory ClientHistory[]
+  Client        Client          @relation(fields: [clientId], references: [id])
+  Service       Service         @relation(fields: [serviceId], references: [id])
+}
+
+model Role {
+  id          String    @id
+  name        String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  updatedAt   DateTime
+  description String    @default("Default Description")
+  User        User[]
+}
+
+model Schedule {
+  id        String   @id
+  date      DateTime
+  startTime DateTime
+  endTime   DateTime
+  userId    String
+  cabinetId String
+  Cabinet   Cabinet  @relation(fields: [cabinetId], references: [id])
+  User      User     @relation(fields: [userId], references: [id])
+}
+
+model Service {
+  id              String            @id
+  name            String
+  description     String?
+  price           Int
+  duration        Float
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  deletedAt       DateTime?
+  creatorId       String
+  ClientHistory   ClientHistory[]
+  Review          Review[]
+  ServiceRecord   ServiceRecord[]
+  WorkerOnService WorkerOnService[]
+  ServiceCategory ServiceCategory[]
+}
+
+model ServiceCategory {
+  id          String    @id
+  name        String
+  description String?
+  Service     Service[]
+}
+
+model ServiceRecord {
+  id            String    @id
+  clientId      String
+  workerId      String
+  dateTime      DateTime
+  serviceId     String
+  officeId      String
+  workCabinetId String
+  result        String?
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+  updatedAt     DateTime
+  Client        Client    @relation(fields: [clientId], references: [id])
+  Office        Office    @relation(fields: [officeId], references: [id])
+  Service       Service   @relation(fields: [serviceId], references: [id])
+  Cabinet       Cabinet   @relation(fields: [workCabinetId], references: [id])
+  User          User      @relation(fields: [workerId], references: [id])
+}
+
+model User {
+  id                                              String            @id
+  lastName                                        String
+  firstName                                       String
+  middleName                                      String?
+  birthDate                                       DateTime
+  createdAt                                       DateTime          @default(now())
+  updatedAt                                       DateTime
+  login                                           String            @unique
+  email                                           String            @unique
+  password                                        String
+  roleId                                          String
+  telegramId                                      String?           @unique
+  DepartmentUser                                  DepartmentUser[]
+  Product                                         Product[]
+  Schedule                                        Schedule[]
+  ServiceRecord                                   ServiceRecord[]
+  Role                                            Role              @relation(fields: [roleId], references: [id])
+  UserOnCabinet                                   UserOnCabinet[]
+  WorkerOnService_WorkerOnService_creatorIdToUser WorkerOnService[] @relation("WorkerOnService_creatorIdToUser")
+  WorkerOnService_WorkerOnService_userIdToUser    WorkerOnService[] @relation("WorkerOnService_userIdToUser")
+}
+
+model UserOnCabinet {
+  cabinetId String
+  userId    String
+  Cabinet   Cabinet @relation(fields: [cabinetId], references: [id])
+  User      User    @relation(fields: [userId], references: [id])
+
+  @@id([cabinetId, userId])
+}
+
+model WorkerOnService {
+  serviceId                            String
+  userId                               String
+  creatorId                            String
+  User_WorkerOnService_creatorIdToUser User    @relation("WorkerOnService_creatorIdToUser", fields: [creatorId], references: [id])
+  Service                              Service @relation(fields: [serviceId], references: [id])
+  User_WorkerOnService_userIdToUser    User    @relation("WorkerOnService_userIdToUser", fields: [userId], references: [id])
+
+  @@id([serviceId, userId])
+}
+
+enum ECabinetStatus {
+  AVAILABLE
+  OCCUPIED
+  UNDER_MAINTENANCE
+}
+
+enum EGrade {
+  VERY_BAD
+  BAD
+  OK
+  GOOD
+  EXCELLENT
+}
+
+enum EStatusRecord {
+  CANCELED
+  DONE
+  PROBLEMS
+}

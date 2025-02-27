@@ -1,29 +1,36 @@
 import telebot
+import os
+from dotenv import load_dotenv
+from prisma.generated import Prisma
+from prisma.errors import PrismaError
 import re
-import psycopg2
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+bot = telebot.TeleBot(BOT_TOKEN)
+prisma = Prisma(datasource_url=DATABASE_URL)
+prisma.connect()
 
 class StartHandler:
-    def __init__(self, bot, connect_to_db):
+    def __init__(self, bot, prisma):
         self.bot = bot
-        self.connect_to_db = connect_to_db
+        self.prisma = prisma
 
     def handle(self, message):
         chat_id = str(message.chat.id)
-        conn = self.connect_to_db()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT telegramId FROM Client WHERE telegramId = %s", (chat_id,))
-            user = cursor.fetchone()
+        try:
+            user = self.prisma.client.find_first(where={"telegramId": chat_id})
             if user:
                 self.bot.send_message(message.chat.id, "Вы уже зарегистрированы!")
                 self.show_menu(message.chat.id)
             else:
                 self.bot.send_message(message.chat.id, "Добро пожаловать! Давайте зарегистрируемся. Введите ваше Имя:")
                 self.bot.register_next_step_handler(message, self.process_name)
-            cursor.close()
-            conn.close()
-        else:
-            self.bot.send_message(message.chat.id, "Ошибка подключения к базе данных.")
+        except PrismaError as e:
+            self.bot.send_message(message.chat.id, f"Ошибка базы данных: {e}")
 
     def process_name(self, message):
         chat_id = message.chat.id
@@ -52,22 +59,35 @@ class StartHandler:
             self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, middle_name)
             return
 
-        conn = self.connect_to_db()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO client (telegramId, firstName, lastName, middleName, birthDate) VALUES (%s, %s, %s, %s, %s)",
-                (str(message.chat.id), name, surname, middle_name, birthdate)
+        try:
+            self.prisma.client.create(
+                data={
+                    "telegramId": str(message.chat.id),
+                    "firstName": name,
+                    "lastName": surname,
+                    "middleName": middle_name,
+                    "birthDate": birthdate,
+                }
             )
-            conn.commit()
-            cursor.close()
-            conn.close()
             self.bot.send_message(chat_id, "Регистрация завершена!")
             self.show_menu(chat_id)
-        else:
-            self.bot.send_message(chat_id, "Ошибка подключения к базе данных.")
+        except PrismaError as e:
+            self.bot.send_message(chat_id, f"Ошибка базы данных: {e}")
 
     def show_menu(self, chat_id):
         markup = telebot.types.ReplyKeyboardMarkup(row_width=1)
         markup.add('Запись на прием', 'История посещений', 'Профиль')
         self.bot.send_message(chat_id, "Основное меню:", reply_markup=markup)
+
+start_handler = StartHandler(bot, prisma)
+
+@bot.callback_query_handler(func=lambda call: call.data == "evaluate")
+def handle_evaluation_callback(call):
+    bot.send_message(call.message.chat.id, "Спасибо за оценку!")
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    start_handler.handle(message)
+
+if __name__ == '__main__':
+    bot.polling()

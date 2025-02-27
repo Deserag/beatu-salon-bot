@@ -7,7 +7,7 @@ from personal_account import ProfileHandler
 from orders_today import OrdersTodayHandler
 from config import BOT_TOKEN
 from personal_account import load_users
-
+from statistic import StatisticHandler
 bot = telebot.TeleBot(BOT_TOKEN)
 menu = Menu(bot)
 order_handler = OrderHandler(bot)
@@ -15,7 +15,7 @@ profile_handler = ProfileHandler(bot)
 orders_today_handler = OrdersTodayHandler(bot)
 start_handler = StartHandler(bot, menu)
 history_handler = HistoryHandler(bot)
-
+statistic_handler = StatisticHandler(bot)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("evaluate_"))
 def handle_evaluation_callback(call):
@@ -48,7 +48,15 @@ def today_orders(message):
         orders_today_handler.handle_today(message)
     else:
         bot.send_message(chat_id, "У вас нет прав для просмотра сегодняшних записей.")
-
+@bot.message_handler(func=lambda message: message.text in ['Запись на прием', 'Профиль', 'Сегодняшние записи', 'История посещений', 'Статистика'])
+def handle_menu(message):
+    chat_id = message.chat.id
+    users = load_users()
+    user = users.get(str(chat_id))
+    if user:
+        menu.handle_menu_item(message, order_handler, profile_handler, orders_today_handler, statistic_handler, user['role'])
+    else:
+        bot.send_message(chat_id, "Пожалуйста, зарегистрируйтесь.")
 @bot.callback_query_handler(func=lambda call: call.data.startswith('service_'))
 def handle_service_choice(call):
     service_id = call.data.split('_')[1]

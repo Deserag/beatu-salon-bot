@@ -5,6 +5,6 @@
         "secondname": "Test",
         "birthdate": "12.12.2000",
         "phone": "12345",
-        "role": "User"
+        "role": "Admin"
     }
 }

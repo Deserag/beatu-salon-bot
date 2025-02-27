@@ -18,7 +18,7 @@ class Menu:
             markup.add('Запись на прием','Сегодняшние записи', 'Статистика', 'Профиль','История посещений')
             self.bot.send_message(chat_id, "Меню администратора:", reply_markup=markup)
 
-    def handle_menu_item(self, message, order_handler, profile_handler, orders_today_handler, role):
+    def handle_menu_item(self, message, order_handler, profile_handler, orders_today_handler, statistic_handler, role):
         if message.text == 'Запись на прием':
             order_handler.handle(message)
         elif message.text == 'Профиль':
@@ -30,3 +30,8 @@ class Menu:
                 self.bot.send_message(message.chat.id, "У вас нет прав для просмотра сегодняшних записей.")
         elif message.text == 'История посещений':
             orders_today_handler.handle_history(message)
+        elif message.text == 'Статистика':
+            if role == 'Admin':
+                statistic_handler.handle(message)
+            else:
+                self.bot.send_message(message.chat.id, "У вас нет прав для просмотра статистики.")

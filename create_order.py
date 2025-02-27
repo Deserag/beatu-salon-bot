@@ -1,5 +1,7 @@
 import telebot
 import json
+import re
+from datetime import datetime
 
 SERVICES_DATA_FILE = 'services.json'
 MASTERS_DATA_FILE = 'masters.json'
@@ -69,7 +71,7 @@ class OrderHandler:
         service = self.services[service_id]
         master = self.masters[master_id]
         available_times = service['available_times']
-        orders = load_orders() # Изменено
+        orders = load_orders()
         occupied_times = [order['time'] for order in orders.values() if order['master'] == master['name']]
 
         markup = telebot.types.InlineKeyboardMarkup()
@@ -85,13 +87,23 @@ class OrderHandler:
 
     def process_time(self, chat_id, time):
         self.current_order[chat_id]['time'] = time
+        self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:")
+        self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
+
+    def process_date(self, message, chat_id):
+        date = message.text
+        if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', date):
+            self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
+            self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
+            return
+        self.current_order[chat_id]['date'] = date
         self.confirm_order(chat_id)
 
     def confirm_order(self, chat_id):
         order = self.current_order[chat_id]
         service = self.services[order['service_id']]
         master = self.masters[order['master_id']]
-        message = f"Вы выбрали услугу: {service['name']}\nМастер: {master['name']}\nВремя: {order['time']}\nПодтвердить заказ?"
+        message = f"Вы выбрали услугу: {service['name']}\nМастер: {master['name']}\nДата: {order['date']}\nВремя: {order['time']}\nПодтвердить заказ?"
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("Подтвердить", callback_data="confirm_order"))
         markup.add(telebot.types.InlineKeyboardButton("Отменить", callback_data="cancel_order"))
@@ -106,7 +118,8 @@ class OrderHandler:
             'service': service['name'],
             'master': master['name'],
             'chat_id': chat_id,
-            'time': order['time']
+            'time': order['time'],
+            'date': order['date']
         }
         save_orders(self.orders)
         self.bot.send_message(chat_id, "Заказ успешно оформлен!")

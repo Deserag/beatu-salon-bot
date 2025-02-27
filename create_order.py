@@ -65,14 +65,24 @@ class OrderHandler:
 
     def process_master(self, chat_id, master_id):
         self.current_order[chat_id]['master_id'] = master_id
-        self.show_available_times(chat_id, self.current_order[chat_id]['service_id'], master_id)
+        # self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:")
+        self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
+
+    def process_date(self, message, chat_id):
+        date = message.text
+        if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', date):
+            self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
+            self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
+            return
+        self.current_order[chat_id]['date'] = date
+        self.show_available_times(chat_id, self.current_order[chat_id]['service_id'], self.current_order[chat_id]['master_id'])
 
     def show_available_times(self, chat_id, service_id, master_id):
         service = self.services[service_id]
         master = self.masters[master_id]
         available_times = service['available_times']
         orders = load_orders()
-        occupied_times = [order['time'] for order in orders.values() if order['master'] == master['name']]
+        occupied_times = [order['time'] for order in orders.values() if order['master'] == master['name'] and order['date'] == self.current_order[chat_id]['date']]
 
         markup = telebot.types.InlineKeyboardMarkup()
         for time in available_times:
@@ -87,16 +97,6 @@ class OrderHandler:
 
     def process_time(self, chat_id, time):
         self.current_order[chat_id]['time'] = time
-        self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:")
-        self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
-
-    def process_date(self, message, chat_id):
-        date = message.text
-        if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', date):
-            self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
-            self.bot.register_next_step_handler(self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"), self.process_date, chat_id)
-            return
-        self.current_order[chat_id]['date'] = date
         self.confirm_order(chat_id)
 
     def confirm_order(self, chat_id):

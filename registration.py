@@ -1,6 +1,7 @@
 import telebot
 import json
 import re
+from menu import Menu
 
 USERS_DATA_FILE = 'users.json'
 
@@ -19,15 +20,16 @@ def save_users(users):
         json.dump(users, f, indent=4)
 
 class StartHandler:
-    def __init__(self, bot):
+    def __init__(self, bot, menu):
         self.bot = bot
+        self.menu = menu
 
     def handle(self, message):
         users = load_users()
         chat_id = message.chat.id
 
         if str(chat_id) in users:
-            self.show_menu(chat_id, users[str(chat_id)]['role'])
+            self.menu.show_menu(chat_id, users[str(chat_id)]['role'])
         else:
             self.bot.send_message(chat_id, "Добро пожаловать! Давайте зарегистрируемся. Введите ваше Имя:")
             self.bot.register_next_step_handler(message, self.process_name)
@@ -82,10 +84,4 @@ class StartHandler:
         }
         save_users(users)
         self.bot.send_message(chat_id, "Регистрация завершена!")
-        self.show_menu(chat_id, 'User')
-
-    def show_menu(self, chat_id, role):
-        if role == 'User':
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1)
-            markup.add('Запись на прием', 'История посещений', 'Профиль')
-            self.bot.send_message(chat_id, "Основное меню:", reply_markup=markup)
+        self.menu.show_menu(chat_id, 'User')

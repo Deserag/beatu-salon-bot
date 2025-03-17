@@ -1,28 +1,15 @@
 import telebot
-import json
 import re
-
-USERS_DATA_FILE = 'users.json'
-
-def load_users():
-    try:
-        with open(USERS_DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_users(users):
-    with open(USERS_DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(users, f, indent=4)
+from datetime import datetime
 
 class ProfileHandler:
     def __init__(self, bot):
         self.bot = bot
+        self.prisma = None
 
     def handle(self, message):
         chat_id = message.chat.id
-        users = load_users()
-        user = users.get(str(chat_id))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
 
         if user:
             self.show_profile(chat_id, user)
@@ -31,11 +18,11 @@ class ProfileHandler:
 
     def show_profile(self, chat_id, user):
         message = f"Ваш профиль:\n\n"
-        message += f"Имя: {user['name']}\n"
-        message += f"Фамилия: {user['surname']}\n"
-        message += f"Отчество: {user['secondname']}\n"
-        message += f"Дата рождения: {user['birthdate']}\n"
-        message += f"Номер телефона: {user['phone']}\n"
+        message += f"Имя: {user.firstName}\n"
+        message += f"Фамилия: {user.lastName}\n"
+        message += f"Отчество: {user.middleName}\n"
+        message += f"Дата рождения: {user.birthDate.strftime('%d.%m.%Y')}\n"
+        message += f"Номер телефона: {user.login}\n"
 
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("Изменить имя", callback_data="edit_name"))
@@ -52,9 +39,10 @@ class ProfileHandler:
 
     def process_new_name(self, message, chat_id):
         name = message.text
-        self.update_user_field(chat_id, 'name', name)
+        self.update_user_field(chat_id, 'firstName', name)
         self.bot.send_message(chat_id, "Имя изменено.")
-        self.show_profile(chat_id, load_users().get(str(chat_id)))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
+        self.show_profile(chat_id, user)
 
     def edit_surname(self, call):
         chat_id = call.message.chat.id
@@ -63,9 +51,10 @@ class ProfileHandler:
 
     def process_new_surname(self, message, chat_id):
         surname = message.text
-        self.update_user_field(chat_id, 'surname', surname)
+        self.update_user_field(chat_id, 'lastName', surname)
         self.bot.send_message(chat_id, "Фамилия изменена.")
-        self.show_profile(chat_id, load_users().get(str(chat_id)))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
+        self.show_profile(chat_id, user)
 
     def edit_secondname(self, call):
         chat_id = call.message.chat.id
@@ -74,9 +63,10 @@ class ProfileHandler:
 
     def process_new_secondname(self, message, chat_id):
         secondname = message.text
-        self.update_user_field(chat_id, 'secondname', secondname)
+        self.update_user_field(chat_id, 'middleName', secondname)
         self.bot.send_message(chat_id, "Отчество изменено.")
-        self.show_profile(chat_id, load_users().get(str(chat_id)))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
+        self.show_profile(chat_id, user)
 
     def edit_birthdate(self, call):
         chat_id = call.message.chat.id
@@ -84,14 +74,21 @@ class ProfileHandler:
         self.bot.register_next_step_handler(call.message, self.process_new_birthdate, chat_id)
 
     def process_new_birthdate(self, message, chat_id):
-        birthdate = message.text
-        if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', birthdate):
+        birthdate_str = message.text
+        if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', birthdate_str):
             self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
             self.bot.register_next_step_handler(message, self.process_new_birthdate, chat_id)
             return
-        self.update_user_field(chat_id, 'birthdate', birthdate)
+        try:
+            birthdate = datetime.strptime(birthdate_str, '%d.%m.%Y').date()
+        except ValueError:
+            self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
+            self.bot.register_next_step_handler(message, self.process_new_birthdate, chat_id)
+            return
+        self.update_user_field(chat_id, 'birthDate', birthdate)
         self.bot.send_message(chat_id, "Дата рождения изменена.")
-        self.show_profile(chat_id, load_users().get(str(chat_id)))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
+        self.show_profile(chat_id, user)
 
     def edit_phone(self, call):
         chat_id = call.message.chat.id
@@ -104,13 +101,13 @@ class ProfileHandler:
             self.bot.send_message(chat_id, "Неверный формат номера. Введите только цифры:")
             self.bot.register_next_step_handler(message, self.process_new_phone, chat_id)
             return
-        self.update_user_field(chat_id, 'phone', phone)
+        self.update_user_field(chat_id, 'login', phone)
         self.bot.send_message(chat_id, "Номер телефона изменен.")
-        self.show_profile(chat_id, load_users().get(str(chat_id)))
+        user = self.prisma.user.find_first(where={'telegramId': str(chat_id)})
+        self.show_profile(chat_id, user)
 
     def update_user_field(self, chat_id, field, value):
-        users = load_users()
-        user = users.get(str(chat_id))
-        if user:
-            user[field] = value
-            save_users(users)
+        self.prisma.user.update(
+            where={'telegramId': str(chat_id)},
+            data={field: value}
+        )

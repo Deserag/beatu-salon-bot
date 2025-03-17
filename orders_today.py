@@ -1,54 +1,51 @@
 import telebot
-import json
-from datetime import datetime
-
-ORDERS_DATA_FILE = 'orders.json'
-
-def load_orders():
-    try:
-        with open(ORDERS_DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+from datetime import datetime, timedelta
 
 class OrdersTodayHandler:
     def __init__(self, bot):
         self.bot = bot
+        self.prisma = None
 
     def handle_today(self, message):
         chat_id = message.chat.id
-        orders = load_orders()
-        today = datetime.now().strftime("%d.%m.%Y")
-        today_orders = []
+        today = datetime.now().date()
+        tomorrow = today + timedelta(days=1)
 
-        for order_id, order in orders.items():
-            try:
-                if order['date'] == today:
-                    today_orders.append(order)
-            except KeyError:
-                continue
+        today_records = self.prisma.serviceRecord.find_many(
+            where={
+                'dateTime': {
+                    'gte': datetime.combine(today, datetime.min.time()),
+                    'lt': datetime.combine(tomorrow, datetime.min.time()),
+                }
+            },
+            include={'service': True, 'worker': True}
+        )
 
-        if today_orders:
+        if today_records:
             message_text = "Сегодняшние записи:\n\n"
-            for order in today_orders:
-                message_text += f"Услуга: {order['service']}\nМастер: {order['master']}\nДата: {order['date']}\nВремя: {order['time']}\n\n"
+            for record in today_records:
+                message_text += f"Услуга: {record.service.name}\nМастер: {record.worker.firstName} {record.worker.lastName}\nДата: {record.dateTime.strftime('%d.%m.%Y')}\nВремя: {record.dateTime.strftime('%H:%M')}\n\n"
             self.bot.send_message(chat_id, message_text)
         else:
             self.bot.send_message(chat_id, "На сегодня записей нет.")
 
     def handle_history(self, message):
         chat_id = message.chat.id
-        orders = load_orders()
-        user_orders = []
+        client = self.prisma.client.find_first(where={'telegramId': str(chat_id)})
 
-        for order_id, order in orders.items():
-            if order['chat_id'] == chat_id:
-                user_orders.append(order)
+        if not client:
+            self.bot.send_message(chat_id, "История посещений пуста.")
+            return
 
-        if user_orders:
+        user_records = self.prisma.serviceRecord.find_many(
+            where={'clientId': client.id},
+            include={'service': True, 'worker': True}
+        )
+
+        if user_records:
             message_text = "История посещений:\n\n"
-            for order in user_orders:
-                message_text += f"Услуга: {order['service']}\nМастер: {order['master']}\nДата: {order['date']}\nВремя: {order['time']}\n\n"
+            for record in user_records:
+                message_text += f"Услуга: {record.service.name}\nМастер: {record.worker.firstName} {record.worker.lastName}\nДата: {record.dateTime.strftime('%d.%m.%Y')}\nВремя: {record.dateTime.strftime('%H:%M')}\n\n"
             self.bot.send_message(chat_id, message_text)
         else:
             self.bot.send_message(chat_id, "История посещений пуста.")

@@ -8,6 +8,8 @@ from orders_today import OrdersTodayHandler
 from config import BOT_TOKEN
 from personal_account import load_users
 from statistic import StatisticHandler
+from prisma import Prisma
+
 bot = telebot.TeleBot(BOT_TOKEN)
 menu = Menu(bot)
 order_handler = OrderHandler(bot)
@@ -16,6 +18,16 @@ orders_today_handler = OrdersTodayHandler(bot)
 start_handler = StartHandler(bot, menu)
 history_handler = HistoryHandler(bot)
 statistic_handler = StatisticHandler(bot)
+
+prisma = Prisma()
+prisma.connect()
+
+start_handler.prisma = prisma
+history_handler.prisma = prisma
+order_handler.prisma = prisma
+profile_handler.prisma = prisma
+orders_today_handler.prisma = prisma
+statistic_handler.prisma = prisma
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("evaluate_"))
 def handle_evaluation_callback(call):

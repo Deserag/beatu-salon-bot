@@ -1,38 +1,60 @@
 import telebot
+from config import get_db_connection
 
 class HistoryHandler:
     def __init__(self, bot):
         self.bot = bot
-        self.prisma = None
         self.current_evaluation = {}
 
     def handle(self, message):
         chat_id = message.chat.id
-        client = self.prisma.client.find_first(where={'telegramId': str(chat_id)})
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        try:
+            cur.execute("SELECT id FROM clients WHERE telegram_id = %s", (str(chat_id),))
+            client = cur.fetchone()
+            
+            if not client:
+                self.bot.send_message(chat_id, "История посещений пуста.")
+                return
 
-        if not client:
-            self.bot.send_message(chat_id, "История посещений пуста.")
-            return
+            cur.execute("""
+                SELECT sr.id, s.name, u.first_name, u.last_name, sr.date_time 
+                FROM service_records sr
+                JOIN services s ON sr.service_id = s.id
+                JOIN user u ON sr.worker_id = u.id
+                WHERE sr.client_id = %s
+                ORDER BY sr.date_time DESC
+            """, (client[0],))
+            service_records = cur.fetchall()
 
-        service_records = self.prisma.serviceRecord.find_many(
-            where={'clientId': client.id},
-            include={'service': True, 'worker': True}
-        )
+            if service_records:
+                message_text = "История посещений:\n\n"
+                for record in service_records:
+                    message_text += (
+                        f"Услуга: {record[1]}\n"
+                        f"Мастер: {record[2]} {record[3]}\n"
+                        f"Дата: {record[4].strftime('%d.%m.%Y')}\n"
+                        f"Время: {record[4].strftime('%H:%M')}\n\n"
+                    )
+                self.bot.send_message(chat_id, message_text)
 
-        if service_records:
-            message_text = "История посещений:\n\n"
-            for record in service_records:
-                message_text += f"Услуга: {record.service.name}\nМастер: {record.worker.firstName} {record.worker.lastName}\nДата: {record.dateTime.strftime('%d.%m.%Y')}\nВремя: {record.dateTime.strftime('%H:%M')}\n\n"
-            self.bot.send_message(chat_id, message_text)
-
-            for record in service_records:
-                self.send_evaluation_button(chat_id, record.id, record.service.name)
-        else:
-            self.bot.send_message(chat_id, "История посещений пуста.")
+                for record in service_records:
+                    self.send_evaluation_button(chat_id, record[0], record[1])
+            else:
+                self.bot.send_message(chat_id, "История посещений пуста.")
+                
+        finally:
+            cur.close()
+            conn.close()
 
     def send_evaluation_button(self, chat_id, record_id, service_name):
         markup = telebot.types.InlineKeyboardMarkup()
-        evaluation_button = telebot.types.InlineKeyboardButton(f"Оценить {service_name}", callback_data=f"evaluate_{record_id}")
+        evaluation_button = telebot.types.InlineKeyboardButton(
+            f"Оценить {service_name}", 
+            callback_data=f"evaluate_{record_id}"
+        )
         markup.add(evaluation_button)
         self.bot.send_message(chat_id, "Оцените посещение:", reply_markup=markup)
 
@@ -44,7 +66,10 @@ class HistoryHandler:
     def send_rating_buttons(self, chat_id):
         markup = telebot.types.InlineKeyboardMarkup()
         for rating in range(1, 6):
-            markup.add(telebot.types.InlineKeyboardButton(str(rating), callback_data=f"rating_{rating}"))
+            markup.add(telebot.types.InlineKeyboardButton(
+                str(rating), 
+                callback_data=f"rating_{rating}"
+            ))
         self.bot.send_message(chat_id, "Выберите оценку (1-5):", reply_markup=markup)
 
     def handle_rating_callback(self, call):
@@ -59,13 +84,36 @@ class HistoryHandler:
         record_id = self.current_evaluation[chat_id]['record_id']
         rating = self.current_evaluation[chat_id]['rating']
 
-        self.prisma.review.create({
-            'data': {
-                'grade': rating,
-                'comment': comment,
-                'clientId': self.prisma.client.find_first(where={'telegramId': str(chat_id)}).id,
-                'serviceId': self.prisma.serviceRecord.find_first(where={'id': record_id}).serviceId
-            }
-        })
-        self.bot.send_message(chat_id, f"Спасибо за оценку ({rating}) и комментарий!")
-        del self.current_evaluation[chat_id]
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        try:
+            # Получаем client_id и service_id
+            cur.execute("""
+                SELECT client_id, service_id 
+                FROM service_records 
+                WHERE id = %s
+            """, (record_id,))
+            record = cur.fetchone()
+            
+            if record:
+                client_id, service_id = record
+                cur.execute("""
+                    INSERT INTO reviews (
+                        grade, comment, client_id, service_id
+                    ) VALUES (%s, %s, %s, %s)
+                """, (rating, comment, client_id, service_id))
+                
+                conn.commit()
+                self.bot.send_message(chat_id, f"Спасибо за оценку ({rating}) и комментарий!")
+            else:
+                self.bot.send_message(chat_id, "Ошибка: запись не найдена")
+                
+        except Exception as e:
+            conn.rollback()
+            self.bot.send_message(chat_id, f"Произошла ошибка: {str(e)}")
+        finally:
+            cur.close()
+            conn.close()
+            if chat_id in self.current_evaluation:
+                del self.current_evaluation[chat_id]

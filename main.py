@@ -1,13 +1,13 @@
 import telebot
+import requests
 from registration import StartHandler
 from history import HistoryHandler
 from menu import Menu
 from create_order import OrderHandler
 from personal_account import ProfileHandler
 from orders_today import OrdersTodayHandler
-from config import BOT_TOKEN
+from config import BOT_TOKEN, get_db_connection
 from statistic import StatisticHandler
-from prisma import Prisma
 
 bot = telebot.TeleBot(BOT_TOKEN)
 menu = Menu(bot)
@@ -17,16 +17,6 @@ orders_today_handler = OrdersTodayHandler(bot)
 start_handler = StartHandler(bot, menu)
 history_handler = HistoryHandler(bot)
 statistic_handler = StatisticHandler(bot)
-
-prisma = Prisma()
-prisma.connect()
-
-start_handler.prisma = prisma
-history_handler.prisma = prisma
-order_handler.prisma = prisma
-profile_handler.prisma = prisma
-orders_today_handler.prisma = prisma
-statistic_handler.prisma = prisma
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("evaluate_"))
 def handle_evaluation_callback(call):
@@ -55,8 +45,13 @@ def handle_rating_callback(call):
 @bot.message_handler(func=lambda message: message.text == 'Сегодняшние записи')
 def today_orders(message):
     chat_id = message.chat.id
-    user = prisma.user.find_first(where={'telegramId': str(chat_id)}, include={'role': True})
-    if user and user.role.name in ['Worker', 'Admin']:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    if user and user[0] in ['Worker', 'Admin']:
         orders_today_handler.handle_today(message)
     else:
         bot.send_message(chat_id, "У вас нет прав для просмотра сегодняшних записей.")
@@ -64,8 +59,13 @@ def today_orders(message):
 @bot.message_handler(func=lambda message: message.text == 'Статистика')
 def statistic(message):
     chat_id = message.chat.id
-    user = prisma.user.find_first(where={'telegramId': str(chat_id)}, include={'role': True})
-    if user and user.role.name in ['Worker', 'Admin']:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    if user and user[0] in ['Worker', 'Admin']:
         statistic_handler.handle(message)
     else:
         bot.send_message(chat_id, "У вас нет прав для просмотра статистики.")
@@ -73,9 +73,14 @@ def statistic(message):
 @bot.message_handler(func=lambda message: message.text in ['Запись на прием', 'Профиль', 'Сегодняшние записи', 'История посещений', 'Статистика'])
 def handle_menu(message):
     chat_id = message.chat.id
-    user = prisma.user.find_first(where={'telegramId': str(chat_id)}, include={'role': True})
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
     if user:
-        menu.handle_menu_item(message, order_handler, profile_handler, orders_today_handler, statistic_handler, user.role.name)
+        menu.handle_menu_item(message, order_handler, profile_handler, orders_today_handler, statistic_handler, user[0])
     else:
         bot.send_message(chat_id, "Пожалуйста, зарегистрируйтесь.")
 

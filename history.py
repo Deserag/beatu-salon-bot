@@ -10,22 +10,22 @@ class HistoryHandler:
         chat_id = message.chat.id
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         try:
-            cur.execute("SELECT id FROM clients WHERE telegram_id = %s", (str(chat_id),))
+            cur.execute("SELECT id FROM client WHERE \"telegramId\" = %s", (str(chat_id),))
             client = cur.fetchone()
-            
+
             if not client:
                 self.bot.send_message(chat_id, "История посещений пуста.")
                 return
 
             cur.execute("""
-                SELECT sr.id, s.name, u.first_name, u.last_name, sr.date_time 
-                FROM service_records sr
-                JOIN services s ON sr.service_id = s.id
-                JOIN user u ON sr.worker_id = u.id
-                WHERE sr.client_id = %s
-                ORDER BY sr.date_time DESC
+                SELECT sr.id, s.name, u."firstName", u."lastName", sr."dateTime"
+                FROM "serviceRecord" sr
+                JOIN service s ON sr."serviceId" = s.id
+                JOIN "user" u ON sr."workerId" = u.id
+                WHERE sr."clientId" = %s
+                ORDER BY sr."dateTime" DESC
             """, (client[0],))
             service_records = cur.fetchall()
 
@@ -44,7 +44,7 @@ class HistoryHandler:
                     self.send_evaluation_button(chat_id, record[0], record[1])
             else:
                 self.bot.send_message(chat_id, "История посещений пуста.")
-                
+
         finally:
             cur.close()
             conn.close()
@@ -52,7 +52,7 @@ class HistoryHandler:
     def send_evaluation_button(self, chat_id, record_id, service_name):
         markup = telebot.types.InlineKeyboardMarkup()
         evaluation_button = telebot.types.InlineKeyboardButton(
-            f"Оценить {service_name}", 
+            f"Оценить {service_name}",
             callback_data=f"evaluate_{record_id}"
         )
         markup.add(evaluation_button)
@@ -67,7 +67,7 @@ class HistoryHandler:
         markup = telebot.types.InlineKeyboardMarkup()
         for rating in range(1, 6):
             markup.add(telebot.types.InlineKeyboardButton(
-                str(rating), 
+                str(rating),
                 callback_data=f"rating_{rating}"
             ))
         self.bot.send_message(chat_id, "Выберите оценку (1-5):", reply_markup=markup)
@@ -86,29 +86,29 @@ class HistoryHandler:
 
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         try:
             # Получаем client_id и service_id
             cur.execute("""
-                SELECT client_id, service_id 
-                FROM service_records 
+                SELECT "clientId", "serviceId"
+                FROM "serviceRecord"
                 WHERE id = %s
             """, (record_id,))
             record = cur.fetchone()
-            
+
             if record:
                 client_id, service_id = record
                 cur.execute("""
-                    INSERT INTO reviews (
-                        grade, comment, client_id, service_id
+                    INSERT INTO review (
+                        grade, comment, "clientId", "serviceId"
                     ) VALUES (%s, %s, %s, %s)
                 """, (rating, comment, client_id, service_id))
-                
+
                 conn.commit()
                 self.bot.send_message(chat_id, f"Спасибо за оценку ({rating}) и комментарий!")
             else:
                 self.bot.send_message(chat_id, "Ошибка: запись не найдена")
-                
+
         except Exception as e:
             conn.rollback()
             self.bot.send_message(chat_id, f"Произошла ошибка: {str(e)}")

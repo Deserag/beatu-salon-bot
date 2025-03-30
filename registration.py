@@ -1,7 +1,6 @@
-import telebot
-import re
 from datetime import datetime
 from config import get_db_connection
+import re
 
 class StartHandler:
     def __init__(self, bot, menu):
@@ -12,11 +11,13 @@ class StartHandler:
         chat_id = message.chat.id
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         try:
-            cur.execute("SELECT role_id FROM user WHERE telegram_id = %s", (str(chat_id),))
+            cur.execute("""
+                SELECT "roleId" FROM "user" WHERE "telegramId" = %s
+            """, (str(chat_id),))
             user = cur.fetchone()
-            
+
             if user:
                 self.menu.show_menu(chat_id, user[0])
             else:
@@ -47,43 +48,44 @@ class StartHandler:
     def process_birthdate(self, message, name, surname, secondname):
         chat_id = message.chat.id
         birthdate_str = message.text
-        
+
         if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', birthdate_str):
             self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
             self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, secondname)
             return
-        
+
         try:
             birthdate = datetime.strptime(birthdate_str, '%d.%m.%Y').date()
         except ValueError:
             self.bot.send_message(chat_id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
             self.bot.register_next_step_handler(message, self.process_birthdate, name, surname, secondname)
             return
-            
+
         self.bot.send_message(chat_id, "Введите ваш номер телефона (только цифры):")
         self.bot.register_next_step_handler(message, self.process_phone, name, surname, secondname, birthdate)
 
     def process_phone(self, message, name, surname, secondname, birthdate):
         chat_id = message.chat.id
         phone = message.text
-        
+
         if not re.match(r'^\d+$', phone):
             self.bot.send_message(chat_id, "Неверный формат номера. Введите только цифры:")
             self.bot.register_next_step_handler(message, self.process_phone, name, surname, secondname, birthdate)
             return
-        
+
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         try:
+            now = datetime.now()
             cur.execute("""
-                INSERT INTO user (
-                    telegram_id, last_name, first_name, middle_name,
-                    birth_date, login, email, password, role_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO "user" (
+                    "telegramId", "lastName", "firstName", "middleName",
+                    "birthDate", login, email, password, "roleId", "createdAt", "updatedAt"
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT id FROM role WHERE name = 'User'), %s, %s)
             """, (
                 str(chat_id), surname, name, secondname,
-                birthdate, phone, f'{phone}@example.com', 'password', 'User'
+                birthdate, phone, f'{phone}@example.com', 'password', now, now
             ))
             conn.commit()
             self.bot.send_message(chat_id, "Регистрация завершена!")

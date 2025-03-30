@@ -47,7 +47,7 @@ def today_orders(message):
     chat_id = message.chat.id
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    cur.execute("SELECT r.name FROM \"user\" u JOIN role r ON u.\"roleId\" = r.id WHERE u.\"telegramId\" = %s", (str(chat_id),))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -61,7 +61,7 @@ def statistic(message):
     chat_id = message.chat.id
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    cur.execute("SELECT r.name FROM \"user\" u JOIN role r ON u.\"roleId\" = r.id WHERE u.\"telegramId\" = %s", (str(chat_id),))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -75,7 +75,7 @@ def handle_menu(message):
     chat_id = message.chat.id
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT r.name FROM user u JOIN roles r ON u.role_id = r.id WHERE u.telegram_id = %s", (str(chat_id),))
+    cur.execute("SELECT r.name FROM \"user\" u JOIN role r ON u.\"roleId\" = r.id WHERE u.\"telegramId\" = %s", (str(chat_id),))
     user = cur.fetchone()
     cur.close()
     conn.close()

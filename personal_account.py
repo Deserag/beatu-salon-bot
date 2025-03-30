@@ -14,9 +14,9 @@ class ProfileHandler:
 
         try:
             cur.execute("""
-                SELECT firstName, lastName, middleName, birthDate, login
-                FROM user
-                WHERE telegramId = %s
+                SELECT "firstName", "lastName", "middleName", "birthDate", login
+                FROM "user"
+                WHERE "telegramId" = %s
             """, (str(chat_id),))
             user = cur.fetchone()
 
@@ -123,7 +123,7 @@ class ProfileHandler:
             cur.execute(f"""
                 UPDATE "user"
                 SET "{field}" = %s
-                WHERE telegramId = %s
+                WHERE "telegramId" = %s
             """, (value, str(chat_id)))
             conn.commit()
         except Exception as e:

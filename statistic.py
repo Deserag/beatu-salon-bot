@@ -7,6 +7,7 @@ class StatisticHandler:
         self.bot = bot
 
     def handle(self, message):
+        
         chat_id = message.chat.id
         today = datetime.now().date()
         tomorrow = today + timedelta(days=1)

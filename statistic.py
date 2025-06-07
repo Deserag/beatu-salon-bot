@@ -16,7 +16,6 @@ class StatisticHandler:
         cur = conn.cursor()
 
         try:
-            # Получаем записи на сегодня с информацией об услугах и мастерах
             cur.execute("""
                 SELECT s.price, u."firstName", u."lastName"
                 FROM "serviceRecord" sr

@@ -2,6 +2,7 @@ import telebot
 import re
 from datetime import datetime, timedelta
 from config import get_db_connection
+import uuid
 
 class OrderHandler:
     def __init__(self, bot):
@@ -14,12 +15,16 @@ class OrderHandler:
         self.show_services(chat_id)
 
     def show_services(self, chat_id):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, name FROM service")
-        services = cur.fetchall()
-        cur.close()
-        conn.close()
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id, name FROM service")
+            services = cur.fetchall()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при получении услуг: {str(e)}")
+            return
 
         markup = telebot.types.InlineKeyboardMarkup()
         for service in services:
@@ -31,17 +36,21 @@ class OrderHandler:
         self.show_masters(chat_id, service_id)
 
     def show_masters(self, chat_id, service_id):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id, u."firstName", u."lastName"
-            FROM "user" u
-            JOIN "workerOnService" wos ON wos."userId" = u.id
-            WHERE wos."serviceId" = %s
-        """, (service_id,))
-        masters = cur.fetchall()
-        cur.close()
-        conn.close()
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT u.id, u."firstName", u."lastName"
+                FROM "user" u
+                JOIN "workerOnService" wos ON wos."userId" = u.id
+                WHERE wos."serviceId" = %s
+            """, (service_id,))
+            masters = cur.fetchall()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при получении мастеров: {str(e)}")
+            return
 
         markup = telebot.types.InlineKeyboardMarkup()
         for master in masters:
@@ -72,8 +81,8 @@ class OrderHandler:
             date = datetime.strptime(date_str, '%d.%m.%Y').date()
             self.current_order[chat_id]['date'] = date
             self.show_available_times(chat_id)
-        except ValueError:
-            self.bot.send_message(chat_id, "Неверная дата. Введите дату в формате ДД.ММ.ГГГГ:")
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при обработке даты: {str(e)}")
             self.bot.register_next_step_handler(
                 self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"),
                 self.process_date, chat_id
@@ -83,15 +92,19 @@ class OrderHandler:
         date = self.current_order[chat_id]['date']
         master_id = self.current_order[chat_id]['master_id']
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT "startTime" FROM schedule
-            WHERE "userId" = %s AND date = %s
-        """, (master_id, date))
-        occupied_times = [t[0].strftime('%H:%M') for t in cur.fetchall()]
-        cur.close()
-        conn.close()
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT "startTime" FROM schedule
+                WHERE "userId" = %s AND date = %s
+            """, (master_id, date))
+            occupied_times = [t[0].strftime('%H:%M') for t in cur.fetchall()]
+            cur.close()
+            conn.close()
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при получении расписания: {str(e)}")
+            return
 
         available_times = [f'{hour:02d}:{minute:02d}'
                            for hour in range(9, 18)
@@ -116,18 +129,22 @@ class OrderHandler:
     def confirm_order(self, chat_id):
         order = self.current_order[chat_id]
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
 
-        cur.execute("SELECT name FROM service WHERE id = %s", (order['service_id'],))
-        service_name = cur.fetchone()[0]
+            cur.execute("SELECT name FROM service WHERE id = %s", (order['service_id'],))
+            service_name = cur.fetchone()[0]
 
-        cur.execute("SELECT \"firstName\", \"lastName\" FROM \"user\" WHERE id = %s", (order['master_id'],))
-        master = cur.fetchone()
-        master_name = f"{master[0]} {master[1]}"
+            cur.execute("SELECT \"firstName\", \"lastName\" FROM \"user\" WHERE id = %s", (order['master_id'],))
+            master = cur.fetchone()
+            master_name = f"{master[0]} {master[1]}"
 
-        cur.close()
-        conn.close()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при получении данных для подтверждения: {str(e)}")
+            return
 
         message = (
             f"Вы выбрали услугу: {service_name}\n"
@@ -143,53 +160,79 @@ class OrderHandler:
         self.bot.send_message(chat_id, message, reply_markup=markup)
 
     def complete_order(self, chat_id):
-        order = self.current_order[chat_id]
-        time_obj = datetime.strptime(order['time'], '%H:%M').time()
-        order_datetime = datetime.combine(order['date'], time_obj)
-
-        conn = get_db_connection()
-        cur = conn.cursor()
+        order = self.current_order.get(chat_id)
+        if not order:
+            self.bot.send_message(chat_id, "Нет активного заказа для оформления.")
+            return
 
         try:
-            # Получаем клиента
-            cur.execute("SELECT id FROM client WHERE \"telegramId\" = %s", (str(chat_id),))
-            client_id = cur.fetchone()[0]
+            time_obj = datetime.strptime(order['time'], '%H:%M').time()
+            order_datetime = datetime.combine(order['date'], time_obj)
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при обработке времени: {str(e)}")
+            return
 
-            # Находим свободный кабинет для мастера
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            cur.execute('SELECT "id" FROM "user" WHERE "telegramId" = %s', (str(chat_id),))
+            result = cur.fetchone()
+            if result is None:
+                self.bot.send_message(chat_id, "Ошибка: пользователь с таким Telegram ID не найден.")
+                cur.close()
+                conn.close()
+                return
+            client_id = result[0]
+
             cur.execute("""
                 SELECT c.id, c."officeId"
                 FROM cabinet c
-                JOIN "userOnCabinet" uoc ON uoc."cabinetId" = c.id
-                WHERE uoc."userId" = %s AND c.status = 'AVAILABLE'
                 LIMIT 1
-            """, (order['master_id'],))
+            """)
             cabinet = cur.fetchone()
 
             if not cabinet:
-                self.bot.send_message(chat_id, "К сожалению, нет доступных кабинетов для выбранного мастера.")
+                self.bot.send_message(chat_id, "Не найден ни один кабинет.")
+                cur.close()
+                conn.close()
                 return
 
-            # Создаем запись о сервисе
+            new_service_record_id = str(uuid.uuid4())
+            new_schedule_id = str(uuid.uuid4())
+            end_time = order_datetime + timedelta(minutes=30)
+            now = datetime.now()
+
             cur.execute("""
                 INSERT INTO "serviceRecord" (
-                    "clientId", "workerId", "dateTime",
-                    "serviceId", "officeId", "workCabinetId"
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    id, "userId", "workerId", "dateTime",
+                    "serviceId", "officeId", "workCabinetId",
+                    "createdAt", "updatedAt"
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                client_id, order['master_id'], order_datetime,
-                order['service_id'], cabinet[1], cabinet[0]
+                new_service_record_id,
+                client_id,
+                order['master_id'],
+                order_datetime,
+                order['service_id'],
+                cabinet[1],
+                cabinet[0],
+                now,
+                now
             ))
 
-            # Добавляем в расписание
-            end_time = order_datetime + timedelta(minutes=30)
             cur.execute("""
                 INSERT INTO schedule (
-                    date, "startTime", "endTime",
+                    id, date, "startTime", "endTime",
                     "userId", "cabinetId"
-                ) VALUES (%s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s)
             """, (
-                order['date'], order_datetime.time(), end_time.time(),
-                order['master_id'], cabinet[0]
+                new_schedule_id,
+                order['date'],
+                order_datetime,
+                end_time,
+                order['master_id'],
+                cabinet[0]
             ))
 
             conn.commit()
@@ -203,7 +246,7 @@ class OrderHandler:
             conn.close()
 
         del self.current_order[chat_id]
-
     def cancel_order(self, chat_id):
         self.bot.send_message(chat_id, "Заказ отменен.")
-        del self.current_order[chat_id]
+        if chat_id in self.current_order:
+            del self.current_order[chat_id]

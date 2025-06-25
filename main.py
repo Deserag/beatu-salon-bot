@@ -8,6 +8,9 @@ from personal_account import ProfileHandler
 from orders_today import OrdersTodayHandler
 from config import BOT_TOKEN, get_db_connection
 from statistic import StatisticHandler
+from notifications import NotificationSender
+from apscheduler.schedulers.background import BackgroundScheduler
+import time
 
 bot = telebot.TeleBot(BOT_TOKEN)
 menu = Menu(bot)
@@ -17,6 +20,13 @@ orders_today_handler = OrdersTodayHandler(bot)
 start_handler = StartHandler(bot, menu)
 history_handler = HistoryHandler(bot)
 statistic_handler = StatisticHandler(bot)
+notification_sender = NotificationSender(bot)
+
+notification_sender.send_hourly_notifications()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(notification_sender.send_hourly_notifications, 'interval', minutes=60)
+scheduler.start()
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("evaluate_"))
 def handle_evaluation_callback(call):
@@ -141,4 +151,11 @@ def handle_edit_phone(call):
     profile_handler.edit_phone(call)
     bot.answer_callback_query(call.id)
 
-bot.polling()
+try:
+    bot.polling()
+except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+    print(f"Ошибка соединения Telegram API: {e}. Перезапускаю бота...")
+    time.sleep(5) 
+    bot.polling()
+finally:
+    scheduler.shutdown() 

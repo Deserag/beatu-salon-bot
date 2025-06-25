@@ -6,10 +6,10 @@ JWT_SECRET = "secret"
 JWT_EXPIRES_IN = 36000000
 
 POSTGRES_CONFIG = {
-    "host": "db",
-    "database": "postgres",
+    "host": "localhost",
+    "database": "ServiceProject",
     "user": "postgres",
-    "password": "postgres",
+    "password": "1",
     "port": "5432"
 }
 

@@ -79,10 +79,25 @@ class OrderHandler:
 
         try:
             date = datetime.strptime(date_str, '%d.%m.%Y').date()
+            
+            if date < datetime.now().date():
+                self.bot.send_message(chat_id, "Выбранная дата не может быть раньше текущей. Пожалуйста, введите корректную дату:")
+                self.bot.register_next_step_handler(
+                    self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"),
+                    self.process_date, chat_id
+                )
+                return
+
             self.current_order[chat_id]['date'] = date
             self.show_available_times(chat_id)
+        except ValueError: 
+            self.bot.send_message(chat_id, "Некорректная дата. Введите дату в формате ДД.ММ.ГГГГ:")
+            self.bot.register_next_step_handler(
+                self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"),
+                self.process_date, chat_id
+            )
         except Exception as e:
-            self.bot.send_message(chat_id, f"Ошибка при обработке даты: {str(e)}")
+            self.bot.send_message(chat_id, f"Произошла непредвиденная ошибка: {str(e)}")
             self.bot.register_next_step_handler(
                 self.bot.send_message(chat_id, "Введите дату в формате ДД.ММ.ГГГГ:"),
                 self.process_date, chat_id
@@ -106,11 +121,40 @@ class OrderHandler:
             self.bot.send_message(chat_id, f"Ошибка при получении расписания: {str(e)}")
             return
 
-        available_times = [f'{hour:02d}:{minute:02d}'
-                           for hour in range(9, 18)
-                           for minute in range(0, 60, 30)]
+        available_times = []
+        start_hour = 9
+        end_hour = 18
+        
+        if date == datetime.now().date():
+            current_time = datetime.now()
+            next_available_time = current_time + timedelta(minutes=30)
+            if next_available_time.minute > 30:
+                next_available_time = next_available_time.replace(minute=0) + timedelta(hours=1)
+            elif 0 < next_available_time.minute <= 30:
+                next_available_time = next_available_time.replace(minute=30)
+            
+            start_hour = next_available_time.hour
+            if next_available_time.minute == 30:
+                start_minute = 30
+            else:
+                start_minute = 0
+            
+            if start_hour >= end_hour:
+                self.bot.send_message(chat_id, "На сегодня нет доступных временных слотов.")
+                return
+
+            current_slot = datetime.combine(date, next_available_time.time())
+            while current_slot.hour < end_hour:
+                available_times.append(current_slot.strftime('%H:%M'))
+                current_slot += timedelta(minutes=30)
+
+        else: 
+            for hour in range(start_hour, end_hour):
+                for minute in range(0, 60, 30):
+                    available_times.append(f'{hour:02d}:{minute:02d}')
 
         markup = telebot.types.InlineKeyboardMarkup()
+        times_found = False
         for time in available_times:
             if time in occupied_times:
                 button_text = f" {time} (занято)"
@@ -118,11 +162,46 @@ class OrderHandler:
             else:
                 button_text = f"🟢 {time}"
                 callback_data = f"time_{time}"
+                times_found = True
             markup.add(telebot.types.InlineKeyboardButton(button_text, callback_data=callback_data))
+
+        if not times_found:
+            self.bot.send_message(chat_id, "На выбранную дату нет свободных временных слотов.")
+            return
 
         self.bot.send_message(chat_id, "Выберите время:", reply_markup=markup)
 
     def process_time(self, chat_id, time):
+        order_date = self.current_order[chat_id]['date']
+        master_id = self.current_order[chat_id]['master_id']
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT "startTime" FROM schedule
+                WHERE "userId" = %s AND date = %s AND "startTime"::time = %s::time
+            """, (master_id, order_date, time))
+            occupied_check = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if occupied_check:
+                self.bot.send_message(chat_id, "Это время уже занято. Пожалуйста, выберите другое время.")
+                self.show_available_times(chat_id)
+                return
+
+            if order_date == datetime.now().date():
+                selected_datetime = datetime.strptime(f"{order_date} {time}", '%Y-%m-%d %H:%M')
+                if selected_datetime < datetime.now():
+                    self.bot.send_message(chat_id, "Это время уже прошло. Пожалуйста, выберите другое время.")
+                    self.show_available_times(chat_id)
+                    return
+
+        except Exception as e:
+            self.bot.send_message(chat_id, f"Ошибка при проверке выбранного времени: {str(e)}")
+            return
+
         self.current_order[chat_id]['time'] = time
         self.confirm_order(chat_id)
 
@@ -246,6 +325,7 @@ class OrderHandler:
             conn.close()
 
         del self.current_order[chat_id]
+
     def cancel_order(self, chat_id):
         self.bot.send_message(chat_id, "Заказ отменен.")
         if chat_id in self.current_order:

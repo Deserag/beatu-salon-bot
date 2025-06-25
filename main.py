@@ -32,7 +32,7 @@ scheduler.start()
 def handle_evaluation_callback(call):
     history_handler.handle_evaluation_callback(call)
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'Start', 'Запуск'])
 def start(message):
     start_handler.handle(message)
 
@@ -61,7 +61,7 @@ def today_orders(message):
     user = cur.fetchone()
     cur.close()
     conn.close()
-    if user and user[0] in ['Worker', 'Admin']:
+    if user and user[0] in ['Worker', 'Admin', 'SuperAdmin']:
         orders_today_handler.handle_today(message)
     else:
         bot.send_message(chat_id, "У вас нет прав для просмотра сегодняшних записей.")
@@ -75,7 +75,7 @@ def statistic(message):
     user = cur.fetchone()
     cur.close()
     conn.close()
-    if user and user[0] in ['Worker', 'Admin']:
+    if user and user[0] in ['Worker', 'Admin', 'SuperAdmin']:
         statistic_handler.handle(message)
     else:
         bot.send_message(chat_id, "У вас нет прав для просмотра статистики.")

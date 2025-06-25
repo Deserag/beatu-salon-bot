@@ -1,6 +1,7 @@
 from datetime import datetime
 from config import get_db_connection
 import re
+import uuid
 
 class StartHandler:
     def __init__(self, bot, menu):
@@ -78,13 +79,14 @@ class StartHandler:
 
         try:
             now = datetime.now()
+            user_id = str(uuid.uuid4())
             cur.execute("""
                 INSERT INTO "user" (
-                    "telegramId", "lastName", "firstName", "middleName",
+                    id, "telegramId", "lastName", "firstName", "middleName",
                     "birthDate", login, email, password, "roleId", "createdAt", "updatedAt"
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT id FROM role WHERE name = 'User'), %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, (SELECT id FROM role WHERE name = 'User'), %s, %s)
             """, (
-                str(chat_id), surname, name, secondname,
+                user_id, str(chat_id), surname, name, secondname,
                 birthdate, phone, f'{phone}@example.com', 'password', now, now
             ))
             conn.commit()

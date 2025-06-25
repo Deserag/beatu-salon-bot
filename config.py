@@ -15,6 +15,3 @@ POSTGRES_CONFIG = {
 
 def get_db_connection():
     return psycopg2.connect(**POSTGRES_CONFIG)
-
-
-BOT_TOKEN = "8127613906:AAGdr_DIVMFwHzj_PU9c8ZhvjmL1bOrzZyY"

@@ -1,4 +1,6 @@
 import telebot
+import uuid
+from datetime import datetime
 from config import get_db_connection
 
 class HistoryHandler:
@@ -12,7 +14,7 @@ class HistoryHandler:
         cur = conn.cursor()
 
         try:
-            cur.execute("SELECT id FROM client WHERE \"telegramId\" = %s", (str(chat_id),))
+            cur.execute('SELECT "id" FROM "user" WHERE "telegramId" = %s', (str(chat_id),))
             client = cur.fetchone()
 
             if not client:
@@ -24,7 +26,7 @@ class HistoryHandler:
                 FROM "serviceRecord" sr
                 JOIN service s ON sr."serviceId" = s.id
                 JOIN "user" u ON sr."workerId" = u.id
-                WHERE sr."clientId" = %s
+                WHERE sr."userId" = %s
                 ORDER BY sr."dateTime" DESC
             """, (client[0],))
             service_records = cur.fetchall()
@@ -88,9 +90,8 @@ class HistoryHandler:
         cur = conn.cursor()
 
         try:
-            # Получаем client_id и service_id
             cur.execute("""
-                SELECT "clientId", "serviceId"
+                SELECT "userId", "serviceId"
                 FROM "serviceRecord"
                 WHERE id = %s
             """, (record_id,))
@@ -100,10 +101,15 @@ class HistoryHandler:
                 client_id, service_id = record
                 cur.execute("""
                     INSERT INTO review (
-                        grade, comment, "clientId", "serviceId"
+                        id,  comment, "userId", "serviceId"
                     ) VALUES (%s, %s, %s, %s)
-                """, (rating, comment, client_id, service_id))
-
+                """, (
+                    str(uuid.uuid4()),
+                    # rating,
+                    comment,
+                    client_id,
+                    service_id,
+                ))
                 conn.commit()
                 self.bot.send_message(chat_id, f"Спасибо за оценку ({rating}) и комментарий!")
             else:
